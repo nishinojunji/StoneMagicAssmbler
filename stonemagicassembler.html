@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>石投げパズル - スコアアタック</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f2f5;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 5px;
+        }
+        #description {
+            color: #666;
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+        }
+        #score-board {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        .info-box {
+            background-color: #fff;
+            padding: 5px 15px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        #score { color: #00b894; }
+        #stone-count { color: #d63031; }
+        #board {
+            display: grid;
+            grid-template-columns: repeat(9, 45px);
+            grid-template-rows: repeat(9, 45px);
+            gap: 2px;
+            background-color: #ccc;
+            padding: 5px;
+            border-radius: 4px;
+        }
+        .cell {
+            background-color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+            user-select: none;
+            position: relative;
+        }
+        .start-cell {
+            background-color: #ffeaa7;
+        }
+        .goal-cell {
+            background-color: #55efc4;
+            color: #00b894;
+        }
+        .stone {
+            width: 30px;
+            height: 30px;
+            background-color: #2d3436;
+            border-radius: 50%;
+            z-index: 2;
+        }
+        .current-stone {
+            width: 30px;
+            height: 30px;
+            background-color: #e17055;
+            border-radius: 50%;
+            animation: pulse 0.5s infinite alternate;
+            z-index: 3;
+        }
+        @keyframes pulse {
+            from { transform: scale(0.8); }
+            to { transform: scale(1.1); }
+        }
+        #controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        input[type="number"] {
+            width: 60px;
+            padding: 8px;
+            font-size: 1rem;
+            text-align: center;
+        }
+        button {
+            padding: 8px 16px;
+            font-size: 1rem;
+            background-color: #0984e3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0284df;
+        }
+        button:disabled {
+            background-color: #b2bec3;
+            cursor: not-allowed;
+        }
+        #message {
+            margin-top: 15px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #d63031;
+            height: 28px;
+        }
+        .success-msg {
+            color: #00b894 !important;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Stone Magic Assembler</h1>
+    <div id="description">石を置いてコースを作り、内側に出現するゴール（G）にピタッと止めよう！</div>
+    
+    <div id="score-board">
+        <div class="info-box">現在のスコア: <span id="score">0</span> 点</div>
+        <div class="info-box">残り石数: <span id="stone-count">15</span> / 15</div>
+    </div>
+
+    <div id="board"></div>
+
+    <div id="controls">
+        <label for="power">投げる強さ (マス数): </label>
+        <input type="number" id="power" min="1" max="30" value="3">
+        <button id="throw-btn" onclick="playTurn()">投げる</button>
+        <button onclick="resetGame()">リセット</button>
+    </div>
+
+    <div id="message"></div>
+
+<script>
+    const BOARD_SIZE = 9;
+    const START_ROW = 8; 
+    const START_COL = 4; 
+    let stonesLeft = 15; // 石を20個に変更
+    let score = 0;
+    let isGameOver = false;
+    
+    let goalRow = -1;
+    let goalCol = -1;
+
+    let grid = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
+
+    const DIRS = [
+        { r: -1, c: 0 }, // 上
+        { r: 0, c: 1 },  // 右
+        { r: 1, c: 0 },  // 下
+        { r: 0, c: -1 }  // 左
+    ];
+
+    // ランダムな位置にゴールを設定（一番外側以外、かつ現在石がない場所）
+    function setRandomGoal() {
+        let availableCells = [];
+        
+        // 一番外側（インデックス 0 と 8）を除外した内側の 7x7 マスを探索
+        for (let r = 1; r < BOARD_SIZE - 1; r++) {
+            for (let c = 1; c < BOARD_SIZE - 1; c++) {
+                // スタート地点ではなく、かつ現在石が置かれていないマスを候補にする
+                if ((r === START_ROW && c === START_COL) || grid[r][c] === 1) continue;
+                availableCells.push({ r, c });
+            }
+        }
+
+        // 万が一、内側が石で埋め尽くされて置けない場合は外側も許容するセーフティ
+        if (availableCells.length === 0) {
+            goalRow = -1;
+            goalCol = -1;
+            return;
+        }
+
+        // 候補からランダムに1つ選ぶ
+        let picked = availableCells[Math.floor(Math.random() * availableCells.length)];
+        goalRow = picked.r;
+        goalCol = picked.c;
+    }
+
+    function createBoard() {
+        const boardEl = document.getElementById('board');
+        boardEl.innerHTML = '';
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                const cell = document.createElement('div');
+                cell.classList.add('cell');
+                cell.id = `cell-${r}-${c}`;
+                
+                if (r === START_ROW && c === START_COL) {
+                    cell.classList.add('start-cell');
+                    cell.innerText = 'S';
+                }
+                boardEl.appendChild(cell);
+            }
+        }
+    }
+
+    function draw() {
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                const cell = document.getElementById(`cell-${r}-${c}`);
+                
+                // クラスのリセット
+                cell.classList.remove('goal-cell');
+                
+                if (grid[r][c] === 1) {
+                    cell.innerText = '';
+                } else {
+                    if (r === START_ROW && c === START_COL) {
+                        cell.innerText = 'S';
+                    } else if (r === goalRow && c === goalCol) {
+                        cell.classList.add('goal-cell');
+                        cell.innerText = 'G';
+                    } else {
+                        cell.innerText = '';
+                    }
+                }
+                
+                const existingStone = cell.querySelector('.stone');
+                if (grid[r][c] === 1) {
+                    if (!existingStone) {
+                        const stone = document.createElement('div');
+                        stone.classList.add('stone');
+                        cell.appendChild(stone);
+                    }
+                } else {
+                    if (existingStone) existingStone.remove();
+                }
+            }
+        }
+        document.getElementById('stone-count').innerText = stonesLeft;
+        document.getElementById('score').innerText = score;
+    }
+
+    function setMessage(msg, isSuccess = false) {
+        const msgEl = document.getElementById('message');
+        msgEl.innerText = msg;
+        if (isSuccess) {
+            msgEl.classList.add('success-msg');
+        } else {
+            msgEl.classList.remove('success-msg');
+        }
+    }
+
+    async function playTurn() {
+        if (stonesLeft <= 0 || isGameOver) return;
+
+        const powerInput = document.getElementById('power');
+        const throwBtn = document.getElementById('throw-btn');
+        let steps = parseInt(powerInput.value, 10);
+
+        if (isNaN(steps) || steps < 1) {
+            setMessage('1以上の強さを指定してください。');
+            return;
+        }
+
+        throwBtn.disabled = true;
+        powerInput.disabled = true;
+        setMessage('');
+
+        let currRow = START_ROW;
+        let currCol = START_COL;
+        let dirIdx = 0; 
+
+        if (grid[currRow][currCol] === 1) {
+            setMessage('スタート地点が塞がっています！ゲームオーバー');
+            isGameOver = true;
+            return;
+        }
+
+        let activeStone = document.createElement('div');
+        activeStone.classList.add('current-stone');
+        document.getElementById(`cell-${currRow}-${currCol}`).appendChild(activeStone);
+
+        let outOfBounds = false;
+
+        for (let i = 0; i < steps; i++) {
+            await new Promise(resolve => setTimeout(resolve, 180)); // テンポ向上のため少し加速
+
+            let turnCount = 0;
+            while (turnCount < 4) {
+                let nextRow = currRow + DIRS[dirIdx].r;
+                let nextCol = currCol + DIRS[dirIdx].c;
+
+                if (nextRow >= 0 && nextRow < BOARD_SIZE && nextCol >= 0 && nextCol < BOARD_SIZE && grid[nextRow][nextCol] === 1) {
+                    dirIdx = (dirIdx + 1) % 4;
+                    turnCount++;
+                } else {
+                    break;
+                }
+            }
+
+            if (turnCount === 4) {
+                setMessage('石に囲まれて進めません！');
+                break;
+            }
+
+            currRow += DIRS[dirIdx].r;
+            currCol += DIRS[dirIdx].c;
+
+            if (currRow < 0 || currRow >= BOARD_SIZE || currCol < 0 || currCol >= BOARD_SIZE) {
+                outOfBounds = true;
+                activeStone.remove();
+                setMessage('石が盤面の外に飛び出しました！');
+                break;
+            }
+
+            activeStone.remove();
+            document.getElementById(`cell-${currRow}-${currCol}`).appendChild(activeStone);
+        }
+
+        // 移動終了後の判定
+        if (!outOfBounds) {
+            activeStone.remove();
+
+            // ゴール判定
+            if (currRow === goalRow && currCol === goalCol) {
+                score++;
+                setMessage(`🎯 ナイスゴール！ 新しいゴールが出現しました！`, true);
+                // ゴールした場所には石を置かず（gridは0のまま）、新しいゴールを再配置
+                setRandomGoal();
+            } else {
+                // ゴールしなかった場合は、通常通り石を配置して障害物にする
+                grid[currRow][currCol] = 1;
+                setMessage(`${steps}マス進んで石を配置しました。`);
+            }
+        }
+
+        stonesLeft--;
+        draw();
+
+        if (stonesLeft === 0) {
+            setMessage(`ゲーム終了！ あなたの最終スコアは 【 ${score} 点 】 です！`);
+            isGameOver = true;
+        } else if (!isGameOver) {
+            throwBtn.disabled = false;
+            powerInput.disabled = false;
+        }
+    }
+
+    function resetGame() {
+        stonesLeft = 15;
+        score = 0;
+        isGameOver = false;
+        grid = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
+        document.getElementById('throw-btn').disabled = false;
+        document.getElementById('power').disabled = false;
+        setMessage('ゲームをリセットしました。');
+        setRandomGoal();
+        createBoard();
+        draw();
+    }
+
+    // 初期起動
+    setRandomGoal();
+    createBoard();
+    draw();
+</script>
+
+</body>
+</html>
