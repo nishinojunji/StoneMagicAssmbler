@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Stone Magick Assembler</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f2f5;
+            padding-bottom: 60px;
+        }
+        h1 {
+            color: #2d3436;
+            margin-bottom: 5px;
+            font-family: 'Georgia', serif;
+            letter-spacing: 1px;
+        }
+        #description {
+            color: #666;
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+        }
+        #score-board {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        .info-box {
+            background-color: #fff;
+            padding: 5px 15px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        #score { color: #00b894; }
+        #stone-count { color: #d63031; }
+        
+        /* インポートエリアのスタイル */
+        #import-zone {
+            margin-bottom: 15px;
+            background-color: #dfe6e9;
+            padding: 8px 15px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #board {
+            display: grid;
+            grid-template-columns: repeat(9, 45px);
+            grid-template-rows: repeat(9, 45px);
+            gap: 2px;
+            background-color: #2d3436; 
+            padding: 6px;
+            border-radius: 6px;
+        }
+        .cell {
+            background-color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+            user-select: none;
+            position: relative;
+        }
+        .start-cell {
+            background-color: #ffeaa7;
+        }
+        .goal-cell {
+            background-color: #55efc4;
+            color: #00b894;
+        }
+        .stone {
+            width: 30px;
+            height: 30px;
+            background-color: #2d3436;
+            border-radius: 50%;
+            z-index: 2;
+        }
+        .current-stone {
+            width: 30px;
+            height: 30px;
+            background-color: #e17055;
+            border-radius: 50%;
+            animation: pulse 0.5s infinite alternate;
+            z-index: 3;
+        }
+        .trajectory-dot {
+            width: 16px; 
+            height: 16px;
+            background-color: #0984e3;
+            border-radius: 50%;
+            position: absolute;
+            z-index: 4; 
+            opacity: 0.3;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.1s;
+        }
+        .trajectory-dot:hover {
+            transform: scale(1.3);
+            opacity: 0.7; 
+            background-color: #e17055;
+        }
+        @keyframes pulse {
+            from { transform: scale(0.8); }
+            to { transform: scale(1.1); }
+        }
+        #controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        input[type="number"] {
+            width: 70px;
+            padding: 8px;
+            font-size: 1rem;
+            text-align: center;
+        }
+        button {
+            padding: 8px 16px;
+            font-size: 1rem;
+            background-color: #0984e3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0284df;
+        }
+        .btn-export {
+            background-color: #6c5ce7;
+        }
+        .btn-export:hover {
+            background-color: #5b4cc4;
+        }
+        button:disabled {
+            background-color: #b2bec3;
+            cursor: not-allowed;
+        }
+        #message {
+            margin-top: 15px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #d63031;
+            height: 28px;
+        }
+        .success-msg {
+            color: #00b894 !important;
+        }
+
+        /* 記録エリアのスタイル */
+        .area-title {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 20px;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        #log-container, #goal-container {
+            width: 415px;
+            background-color: #fff;
+            border-radius: 6px;
+            padding: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            box-sizing: border-box;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        #log-display, #goal-display {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #2d3436;
+            word-wrap: break-word;
+            letter-spacing: 1px;
+            min-height: 24px;
+        }
+        #goal-display {
+            color: #00b894; /* ゴールシーケンスは緑色に */
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Stone Magick Assembler</h1>
+    <div id="description">弾道クリックで発射！JSONを読み込んで固定ルートの生成も可能です。</div>
+    
+    <div id="import-zone">
+        <label style="font-weight: bold;">🔮 術式（JSON）をロードする: </label>
+        <input type="file" id="json-file" accept=".json" onchange="importSequence(event)">
+    </div>
+
+    <div id="score-board">
+        <div class="info-box">現在のスコア: <span id="score">0</span> 点</div>
+        <div class="info-box">残り石数: <span id="stone-count">15</span> / 15</div>
+    </div>
+
+    <div id="board"></div>
+
+    <div id="controls">
+        <label for="power">投げる強さ (1〜50): </label>
+        <input type="number" id="power" min="1" max="50" value="3" oninput="updateTrajectory()">
+        <button id="throw-btn" onclick="playTurn()">投げる</button>
+        <button onclick="resetGame()">リセット</button>
+        <button class="btn-export" onclick="exportSequence()">JSON出力</button>
+    </div>
+
+    <div id="message"></div>
+
+    <div class="area-title">🪨 飛距離記録 (履歴)</div>
+    <div id="log-container">
+        <div id="log-display"></div>
+    </div>
+
+    <div class="area-title">🎯 ゴールシーケンス記録 (x, y)</div>
+    <div id="goal-container">
+        <div id="goal-display"></div>
+    </div>
+
+<script>
+    const BOARD_SIZE = 9;
+    const START_ROW = 8; 
+    const START_COL = 4; 
+    const MAX_STONES = 15; 
+    let stonesLeft = MAX_STONES; 
+    let score = 0;
+    let isGameOver = false;
+    let isAnimating = false; 
+    
+    let historyLogs = []; 
+    let goalSequence = []; // ゴール座標オブジェクト {x, y} を記録する配列
+    
+    // インポートされたゴールリストを保持する
+    let importedGoals = [];
+    let currentGoalIndex = 0;
+
+    let goalRow = -1;
+    let goalCol = -1;
+
+    let grid = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
+
+    const DIRS = [
+        { r: -1, c: 0 }, // 上
+        { r: 0, c: 1 },  // 右
+        { r: 1, c: 0 },  // 下
+        { r: 0, c: -1 }  // 左
+    ];
+
+    function isObstacle(r, c) {
+        if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) return true;
+        if (grid[r][c] === 1) return true;
+        return false;
+    }
+
+    // 新しいゴールを生成（インポートがある場合はそこから抽出し、なければランダム）
+    function setNextGoal() {
+        // インポートデータが存在し、まだ残っている場合
+        if (importedGoals.length > 0 && currentGoalIndex < importedGoals.length) {
+            let nextG = importedGoals[currentGoalIndex];
+            goalRow = nextG.y; // 内部のrow管理
+            goalCol = nextG.x; // 内部のcol管理
+            currentGoalIndex++;
+        } else {
+            // 通常のランダム配置
+            let availableCells = [];
+            for (let r = 1; r < BOARD_SIZE - 1; r++) {
+                for (let c = 1; c < BOARD_SIZE - 1; c++) {
+                    if ((r === START_ROW && c === START_COL) || grid[r][c] === 1) continue;
+                    availableCells.push({ r, c });
+                }
+            }
+            if (availableCells.length === 0) {
+                goalRow = -1;
+                goalCol = -1;
+                return;
+            }
+            let picked = availableCells[Math.floor(Math.random() * availableCells.length)];
+            goalRow = picked.r;
+            goalCol = picked.c;
+        }
+    }
+
+    function createBoard() {
+        const boardEl = document.getElementById('board');
+        boardEl.innerHTML = '';
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                const cell = document.createElement('div');
+                cell.classList.add('cell');
+                cell.id = `cell-${r}-${c}`;
+                
+                if (r === START_ROW && c === START_COL) {
+                    cell.classList.add('start-cell');
+                    cell.innerText = 'S';
+                }
+                boardEl.appendChild(cell);
+            }
+        }
+    }
+
+    function updateTrajectory() {
+        document.querySelectorAll('.trajectory-dot').forEach(el => el.remove());
+
+        if (isGameOver || stonesLeft <= 0 || isAnimating || grid[START_ROW][START_COL] === 1) return;
+
+        const powerInput = document.getElementById('power');
+        let steps = parseInt(powerInput.value, 10);
+        if (isNaN(steps) || steps < 1) return;
+        if (steps > 50) steps = 50;
+
+        let currRow = START_ROW;
+        let currCol = START_COL;
+        let dirIdx = 0;
+        let fullPath = [];
+
+        for (let i = 1; i <= 50; i++) {
+            let turnCount = 0;
+            while (turnCount < 4) {
+                let nextRow = currRow + DIRS[dirIdx].r;
+                let nextCol = currCol + DIRS[dirIdx].c;
+
+                if (isObstacle(nextRow, nextCol)) {
+                    dirIdx = (dirIdx + 1) % 4;
+                    turnCount++;
+                } else {
+                    break;
+                }
+            }
+            if (turnCount === 4) break;
+
+            currRow += DIRS[dirIdx].r;
+            currCol += DIRS[dirIdx].c;
+
+            fullPath.push({ r: currRow, c: currCol, stepCount: i });
+        }
+
+        fullPath.forEach((pos) => {
+            const cell = document.getElementById(`cell-${pos.r}-${pos.c}`);
+            if (cell) {
+                const dot = document.createElement('div');
+                dot.classList.add('trajectory-dot');
+                
+                dot.onclick = (e) => {
+                    e.stopPropagation(); 
+                    if (isAnimating) return;
+                    powerInput.value = pos.stepCount;
+                    playTurn();
+                };
+                
+                cell.appendChild(dot);
+            }
+        });
+    }
+
+    // 飛距離ログの表示更新
+    function addSimpleLog(steps) {
+        historyLogs.push(steps);
+        document.getElementById('log-display').innerText = historyLogs.join(' ');
+    }
+
+    // ゴールシーケンスログの表示更新
+    function addGoalLog(col, row) {
+        // 表示用にオブジェクトを追加 (x は列、y は行)
+        goalSequence.push({ x: col, y: row });
+        
+        // (x, y), (x2, y2) ... のフォーマットで文字列化
+        let logStr = goalSequence.map(g => `(${g.x}, ${g.y})`).join(', ');
+        document.getElementById('goal-display').innerText = logStr;
+    }
+
+    function draw() {
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                const cell = document.getElementById(`cell-${r}-${c}`);
+                cell.classList.remove('goal-cell');
+                
+                if (grid[r][c] === 1) {
+                    cell.innerText = '';
+                } else {
+                    if (r === START_ROW && c === START_COL) {
+                        cell.innerText = 'S';
+                    } else if (r === goalRow && c === goalCol) {
+                        cell.classList.add('goal-cell');
+                        cell.innerText = 'G';
+                    } else {
+                        cell.innerText = '';
+                    }
+                }
+                
+                const existingStone = cell.querySelector('.stone');
+                if (grid[r][c] === 1) {
+                    if (!existingStone) {
+                        const stone = document.createElement('div');
+                        stone.classList.add('stone');
+                        cell.appendChild(stone);
+                    }
+                } else {
+                    if (existingStone) existingStone.remove();
+                }
+            }
+        }
+        document.getElementById('stone-count').innerText = stonesLeft;
+        document.getElementById('score').innerText = score;
+        updateTrajectory();
+    }
+
+    function setMessage(msg, isSuccess = false) {
+        const msgEl = document.getElementById('message');
+        msgEl.innerText = msg;
+        if (isSuccess) {
+            msgEl.classList.add('success-msg');
+        } else {
+            msgEl.classList.remove('success-msg');
+        }
+    }
+
+    async function playTurn() {
+        if (stonesLeft <= 0 || isGameOver || isAnimating) return;
+
+        const powerInput = document.getElementById('power');
+        const throwBtn = document.getElementById('throw-btn');
+        let steps = parseInt(powerInput.value, 10);
+
+        if (isNaN(steps) || steps < 1) {
+            setMessage('1以上の強さを指定してください。');
+            return;
+        }
+        if (steps > 50) steps = 50;
+
+        isAnimating = true;
+        throwBtn.disabled = true;
+        powerInput.disabled = true;
+        setMessage('');
+        
+        document.querySelectorAll('.trajectory-dot').forEach(el => el.remove());
+
+        let currRow = START_ROW;
+        let currCol = START_COL;
+        let dirIdx = 0; 
+
+        if (grid[currRow][currCol] === 1) {
+            setMessage('スタート地点が塞がっています！ゲームオーバー');
+            isGameOver = true;
+            isAnimating = false;
+            return;
+        }
+
+        let activeStone = document.createElement('div');
+        activeStone.classList.add('current-stone');
+        document.getElementById(`cell-${currRow}-${currCol}`).appendChild(activeStone);
+
+        for (let i = 0; i < steps; i++) {
+            await new Promise(resolve => setTimeout(resolve, 80)); 
+
+            let turnCount = 0;
+            while (turnCount < 4) {
+                let nextRow = currRow + DIRS[dirIdx].r;
+                let nextCol = currCol + DIRS[dirIdx].c;
+
+                if (isObstacle(nextRow, nextCol)) {
+                    dirIdx = (dirIdx + 1) % 4;
+                    turnCount++;
+                } else {
+                    break;
+                }
+            }
+
+            if (turnCount === 4) {
+                setMessage('完全に囲まれました！');
+                break;
+            }
+
+            currRow += DIRS[dirIdx].r;
+            currCol += DIRS[dirIdx].c;
+
+            activeStone.remove();
+            document.getElementById(`cell-${currRow}-${currCol}`).appendChild(activeStone);
+        }
+
+        activeStone.remove();
+
+        if (currRow === goalRow && currCol === goalCol) {
+            score++;
+            setMessage(`🎯 ナイスゴール！ 新しい魔導核が出現しました！`, true);
+            // ゴールが達成された瞬間の座標を記録 (x=列, y=行)
+            addGoalLog(currCol, currRow);
+            setNextGoal();
+        } else {
+            grid[currRow][currCol] = 1;
+            setMessage(`${steps}マス進んで魔導石を配置しました。`);
+        }
+
+        addSimpleLog(steps);
+
+        stonesLeft--;
+        isAnimating = false; 
+        draw();
+
+        if (stonesLeft === 0) {
+            setMessage(`作戦終了！ あなたのアセンブルスコアは 【 ${score} 点 】 です！ JSON出力が可能です。`);
+            isGameOver = true;
+        } else if (!isGameOver) {
+            throwBtn.disabled = false;
+            powerInput.disabled = false;
+        }
+    }
+
+    // JSONをエクスポートする関数
+    function exportSequence() {
+        if (goalSequence.length === 0) {
+            alert("まだゴールが記録されていません！");
+            return;
+        }
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(goalSequence, null, 2));
+        const downloadAnchor = document.createElement('a');
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", "magick_stage_sequence.json");
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+    }
+
+    // JSONをインポートする関数
+    function importSequence(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const parsed = JSON.parse(e.target.読み込み完了したデータ || e.target.result);
+                if (Array.isArray(parsed)) {
+                    importedGoals = parsed;
+                    alert(`🔮 術式展開：${importedGoals.length}個の固定ゴールデータを読み込みました！リセットボタン、または投擲を開始すると適用されます。`);
+                    resetGame(); // インポートと同時にゲームをリセットして同期
+                } else {
+                    alert("正しい形式のJSON配列ではありません。");
+                }
+            } catch (err) {
+                alert("JSONファイルの解析に失敗しました。形式を確認してください。");
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    function resetGame() {
+        stonesLeft = MAX_STONES;
+        score = 0;
+        historyLogs = []; 
+        goalSequence = []; // 自身の記録用配列もリセット
+        currentGoalIndex = 0; // 読み込みインデックスを頭に戻す
+        isGameOver = false;
+        isAnimating = false;
+        grid = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
+        
+        document.getElementById('throw-btn').disabled = false;
+        document.getElementById('power').disabled = false;
+        document.getElementById('log-display').innerText = ''; 
+        document.getElementById('goal-display').innerText = ''; 
+        
+        setMessage(importedGoals.length > 0 ? 'ロードされた固定魔導ルートで術式を初期化しました。' : '術式を初期化しました。');
+        
+        setNextGoal();
+        createBoard();
+        draw();
+    }
+
+    // 初期起動
+    setNextGoal();
+    createBoard();
+    draw();
+</script>
+
+</body>
+</html>
