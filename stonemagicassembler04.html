@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Stone Magick Assembler</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f2f5;
+            padding-bottom: 60px;
+        }
+        h1 {
+            color: #2d3436;
+            margin-bottom: 5px;
+            font-family: 'Georgia', serif;
+            letter-spacing: 1px;
+        }
+        #description {
+            color: #666;
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+        }
+        #score-board {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        .info-box {
+            background-color: #fff;
+            padding: 5px 15px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        #score { color: #00b894; }
+        #stone-count { color: #d63031; }
+        
+        #import-zone {
+            margin-bottom: 15px;
+            background-color: #dfe6e9;
+            padding: 8px 15px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #board {
+            display: grid;
+            grid-template-columns: repeat(5, 45px);
+            grid-template-rows: repeat(5, 45px);
+            gap: 2px;
+            background-color: #2d3436; 
+            padding: 6px;
+            border-radius: 6px;
+        }
+        .cell {
+            background-color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+            user-select: none;
+            position: relative;
+        }
+        .start-cell {
+            background-color: #ffeaa7;
+        }
+        .goal-cell {
+            background-color: #55efc4;
+            color: #00b894;
+        }
+        .stone {
+            width: 30px;
+            height: 30px;
+            background-color: #2d3436;
+            border-radius: 50%;
+            z-index: 2;
+        }
+        .current-stone {
+            width: 30px;
+            height: 30px;
+            background-color: #e17055;
+            border-radius: 50%;
+            animation: pulse 0.5s infinite alternate;
+            z-index: 3;
+        }
+        .trajectory-dot {
+            width: 16px; 
+            height: 16px;
+            background-color: #0984e3;
+            border-radius: 50%;
+            position: absolute;
+            z-index: 4; 
+            opacity: 0.3;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.1s;
+        }
+        .trajectory-dot:hover {
+            transform: scale(1.3);
+            opacity: 0.7; 
+            background-color: #e17055;
+        }
+        @keyframes pulse {
+            from { transform: scale(0.8); }
+            to { transform: scale(1.1); }
+        }
+        #controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        input[type="number"] {
+            width: 70px;
+            padding: 8px;
+            font-size: 1rem;
+            text-align: center;
+        }
+        button {
+            padding: 8px 16px;
+            font-size: 1rem;
+            background-color: #0984e3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0284df;
+        }
+        .btn-export {
+            background-color: #6c5ce7;
+        }
+        .btn-export:hover {
+            background-color: #5b4cc4;
+        }
+        button:disabled {
+            background-color: #b2bec3;
+            cursor: not-allowed;
+        }
+        #message {
+            margin-top: 15px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #d63031;
+            height: 28px;
+        }
+        .success-msg {
+            color: #00b894 !important;
+        }
+
+        .area-title {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 20px;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        #log-container, #goal-container {
+            width: 300px; 
+            background-color: #fff;
+            border-radius: 6px;
+            padding: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            box-sizing: border-box;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        #log-display, #goal-display {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #2d3436;
+            word-wrap: break-word;
+            letter-spacing: 1px;
+            min-height: 24px;
+        }
+        #goal-display {
+            color: #00b894; 
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Stone Magick Assembler</h1>
+    <div id="description">初期石5個、ゴール3個。すべてのゴールを獲得すればクリア！</div>
+    
+    <div id="import-zone">
+        <label style="font-weight: bold;">🔮 JSONロード: </label>
+        <input type="file" id="json-file" accept=".json" onchange="importSequence(event)">
+    </div>
+
+    <div id="score-board">
+        <div class="info-box">獲得ゴール: <span id="score">0</span> / 3</div>
+        <div class="info-box">残り石: <span id="stone-count">15</span> / 15</div>
+    </div>
+
+    <div id="board"></div>
+
+    <div id="controls">
+        <label for="power">強さ: </label>
+        <input type="number" id="power" min="1" max="50" value="3" oninput="updateTrajectory()">
+        <button id="throw-btn" onclick="playTurn()">投げる</button>
+        <button onclick="resetGame()">リセット</button>
+        <button class="btn-export" onclick="exportSequence()">JSON出力</button>
+    </div>
+
+    <div id="message"></div>
+
+    <div class="area-title">🪨 飛距離記録</div>
+    <div id="log-container">
+        <div id="log-display"></div>
+    </div>
+
+    <div class="area-title">🎯 ゴールシーケンス (x, y)</div>
+    <div id="goal-container">
+        <div id="goal-display"></div>
+    </div>
+
+<script>
+    const BOARD_SIZE = 5;
+    const START_ROW = 4; 
+    const START_COL = 2; 
+    const MAX_STONES = 15; 
+    let stonesLeft = MAX_STONES; 
+    let score = 0;
+    let isGameOver = false;
+    let isAnimating = false; 
+    
+    let historyLogs = []; 
+    let goalSequence = []; 
+    let importedGoals = [];
+
+    // 複数ゴールの座標を管理する配列 (最大3つ)
+    let activeGoals = [];
+
+    let grid = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
+
+    const DIRS = [
+        { r: -1, c: 0 }, // 上
+        { r: 0, c: 1 },  // 右
+        { r: 1, c: 0 },  // 下
+        { r: 0, c: -1 }  // 左
+    ];
+
+    function isObstacle(r, c) {
+        if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) return true;
+        if (grid[r][c] === 1) return true;
+        return false;
+    }
+
+    // 初期のランダム石を5つ配置する関数
+    function initRandomStones() {
+        let count = 0;
+        while (count < 5) {
+            let r = Math.floor(Math.random() * BOARD_SIZE);
+            let c = Math.floor(Math.random() * BOARD_SIZE);
+            // スタート位置以外かつ、まだ石が置かれていない場所
+            if ((r === START_ROW && c === START_COL) || grid[r][c] === 1) {
+                continue;
+            }
+            grid[r][c] = 1;
+            count++;
+        }
+    }
+
+    // 最初に3つのゴールを一括で設置する（インポート、またはランダム）
+    function initThreeGoals() {
+        activeGoals = [];
+
+        if (importedGoals.length >= 3) {
+            // インポートデータがある場合は最初の3つを適用
+            for (let i = 0; i < 3; i++) {
+                let g = importedGoals[i];
+                activeGoals.push({ r: Math.min(g.y, BOARD_SIZE-1), c: Math.min(g.x, BOARD_SIZE-1) });
+            }
+        } else {
+            // ランダムに3つ設置
+            while (activeGoals.length < 3) {
+                let r = Math.floor(Math.random() * BOARD_SIZE);
+                let c = Math.floor(Math.random() * BOARD_SIZE);
+                
+                // スタート位置、すでに石がある場所、すでに他のゴールがある場所は避ける
+                if ((r === START_ROW && c === START_COL) || grid[r][c] === 1) continue;
+                if (activeGoals.some(g => g.r === r && g.c === c)) continue;
+                
+                activeGoals.push({ r, c });
+            }
+        }
+    }
+
+    // 指定された座標がゴールかどうか判定する関数
+    function checkGoalIndex(r, c) {
+        return activeGoals.findIndex(g => g.r === r && g.c === c);
+    }
+
+    function createBoard() {
+        const boardEl = document.getElementById('board');
+        boardEl.innerHTML = '';
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                const cell = document.createElement('div');
+                cell.classList.add('cell');
+                cell.id = `cell-${r}-${c}`;
+                
+                if (r === START_ROW && c === START_COL) {
+                    cell.classList.add('start-cell');
+                    cell.innerText = 'S';
+                }
+                boardEl.appendChild(cell);
+            }
+        }
+    }
+
+    function updateTrajectory() {
+        document.querySelectorAll('.trajectory-dot').forEach(el => el.remove());
+
+        if (isGameOver || stonesLeft <= 0 || isAnimating || grid[START_ROW][START_COL] === 1) return;
+
+        const powerInput = document.getElementById('power');
+        let steps = parseInt(powerInput.value, 10);
+        if (isNaN(steps) || steps < 1) return;
+        if (steps > 50) steps = 50;
+
+        let currRow = START_ROW;
+        let currCol = START_COL;
+        let dirIdx = 0;
+        let fullPath = [];
+
+        for (let i = 1; i <= 50; i++) {
+            let turnCount = 0;
+            while (turnCount < 4) {
+                let nextRow = currRow + DIRS[dirIdx].r;
+                let nextCol = currCol + DIRS[dirIdx].c;
+
+                if (isObstacle(nextRow, nextCol)) {
+                    dirIdx = (dirIdx + 1) % 4;
+                    turnCount++;
+                } else {
+                    break;
+                }
+            }
+            if (turnCount === 4) break;
+
+            currRow += DIRS[dirIdx].r;
+            currCol += DIRS[dirIdx].c;
+
+            fullPath.push({ r: currRow, c: currCol, stepCount: i });
+        }
+
+        fullPath.forEach((pos) => {
+            const cell = document.getElementById(`cell-${pos.r}-${pos.c}`);
+            if (cell) {
+                const dot = document.createElement('div');
+                dot.classList.add('trajectory-dot');
+                
+                dot.onclick = (e) => {
+                    e.stopPropagation(); 
+                    if (isAnimating) return;
+                    powerInput.value = pos.stepCount;
+                    playTurn();
+                };
+                
+                cell.appendChild(dot);
+            }
+        });
+    }
+
+    function addSimpleLog(steps) {
+        historyLogs.push(steps);
+        document.getElementById('log-display').innerText = historyLogs.join(' ');
+    }
+
+    function addGoalLog(col, row) {
+        goalSequence.push({ x: col, y: row });
+        let logStr = goalSequence.map(g => `(${g.x}, ${g.y})`).join(', ');
+        document.getElementById('goal-display').innerText = logStr;
+    }
+
+    function draw() {
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                const cell = document.getElementById(`cell-${r}-${c}`);
+                cell.classList.remove('goal-cell');
+                
+                if (grid[r][c] === 1) {
+                    cell.innerText = '';
+                } else {
+                    if (r === START_ROW && c === START_COL) {
+                        cell.innerText = 'S';
+                    } else if (checkGoalIndex(r, c) !== -1) {
+                        cell.classList.add('goal-cell');
+                        cell.innerText = 'G';
+                    } else {
+                        cell.innerText = '';
+                    }
+                }
+                
+                const existingStone = cell.querySelector('.stone');
+                if (grid[r][c] === 1) {
+                    if (!existingStone) {
+                        const stone = document.createElement('div');
+                        stone.classList.add('stone');
+                        cell.appendChild(stone);
+                    }
+                } else {
+                    if (existingStone) existingStone.remove();
+                }
+            }
+        }
+        document.getElementById('stone-count').innerText = stonesLeft;
+        document.getElementById('score').innerText = score;
+        updateTrajectory();
+    }
+
+    function setMessage(msg, isSuccess = false) {
+        const msgEl = document.getElementById('message');
+        msgEl.innerText = msg;
+        if (isSuccess) {
+            msgEl.classList.add('success-msg');
+        } else {
+            msgEl.classList.remove('success-msg');
+        }
+    }
+
+    async function playTurn() {
+        if (stonesLeft <= 0 || isGameOver || isAnimating) return;
+
+        const powerInput = document.getElementById('power');
+        const throwBtn = document.getElementById('throw-btn');
+        let steps = parseInt(powerInput.value, 10);
+
+        if (isNaN(steps) || steps < 1) {
+            setMessage('1以上の強さを指定してください。');
+            return;
+        }
+        if (steps > 50) steps = 50;
+
+        isAnimating = true;
+        throwBtn.disabled = true;
+        powerInput.disabled = true;
+        setMessage('');
+        
+        document.querySelectorAll('.trajectory-dot').forEach(el => el.remove());
+
+        let currRow = START_ROW;
+        let currCol = START_COL;
+        let dirIdx = 0; 
+
+        if (grid[currRow][currCol] === 1) {
+            setMessage('スタート地点が塞がっています！G.O.');
+            isGameOver = true;
+            isAnimating = false;
+            return;
+        }
+
+        let activeStone = document.createElement('div');
+        activeStone.classList.add('current-stone');
+        document.getElementById(`cell-${currRow}-${currCol}`).appendChild(activeStone);
+
+        for (let i = 0; i < steps; i++) {
+            await new Promise(resolve => setTimeout(resolve, 80)); 
+
+            let turnCount = 0;
+            while (turnCount < 4) {
+                let nextRow = currRow + DIRS[dirIdx].r;
+                let nextCol = currCol + DIRS[dirIdx].c;
+
+                if (isObstacle(nextRow, nextCol)) {
+                    dirIdx = (dirIdx + 1) % 4;
+                    turnCount++;
+                } else {
+                    break;
+                }
+            }
+
+            if (turnCount === 4) {
+                setMessage('完全に囲まれました！');
+                break;
+            }
+
+            currRow += DIRS[dirIdx].r;
+            currCol += DIRS[dirIdx].c;
+
+            activeStone.remove();
+            document.getElementById(`cell-${currRow}-${currCol}`).appendChild(activeStone);
+        }
+
+        activeStone.remove();
+
+        const goalIdx = checkGoalIndex(currRow, currCol);
+        if (goalIdx !== -1) {
+            score++;
+            setMessage(`🎯 ゴールを獲得！`, true);
+            addGoalLog(currCol, currRow);
+            // 獲得したゴールを配列から削除
+            activeGoals.splice(goalIdx, 1);
+        } else {
+            grid[currRow][currCol] = 1;
+            setMessage(`${steps}マス進んで魔導石を配置。`);
+        }
+
+        addSimpleLog(steps);
+        stonesLeft--;
+        isAnimating = false; 
+
+        // 勝敗・クリア判定
+        if (score === 3) {
+            setMessage(`🎉 STAGE CLEAR !! 3つのゴールをすべて回収しました！`, true);
+            isGameOver = true;
+        } else if (stonesLeft === 0) {
+            setMessage(`作戦終了！ ゴール未回収のためゲームオーバー`);
+            isGameOver = true;
+        }
+
+        draw();
+
+        if (!isGameOver) {
+            throwBtn.disabled = false;
+            powerInput.disabled = false;
+        }
+    }
+
+    function exportSequence() {
+        if (goalSequence.length === 0) {
+            alert("まだゴールが記録されていません！");
+            return;
+        }
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(goalSequence, null, 2));
+        const downloadAnchor = document.createElement('a');
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", "magick_3goals_5x5.json");
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+    }
+
+    function importSequence(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const parsed = JSON.parse(e.target.result);
+                if (Array.isArray(parsed)) {
+                    importedGoals = parsed;
+                    alert(`🔮 固定ゴールデータを読み込みました！（初期3箇所に反映）`);
+                    resetGame(); 
+                } else {
+                    alert("正しい形式ではありません。");
+                }
+            } catch (err) {
+                alert("ファイルの解析に失敗しました。");
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    function resetGame() {
+        stonesLeft = MAX_STONES;
+        score = 0;
+        historyLogs = []; 
+        goalSequence = []; 
+        isGameOver = false;
+        isAnimating = false;
+        
+        // 盤面初期化
+        grid = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
+        
+        document.getElementById('throw-btn').disabled = false;
+        document.getElementById('power').disabled = false;
+        document.getElementById('log-display').innerText = ''; 
+        document.getElementById('goal-display').innerText = ''; 
+        
+        setMessage('術式を初期化しました。');
+        
+        // ★初期石5個を配置
+        initRandomStones();
+        // ★3つのゴールを配置
+        initThreeGoals();
+        
+        createBoard();
+        draw();
+    }
+
+    // 初回起動処理
+    initRandomStones();
+    initThreeGoals();
+    createBoard();
+    draw();
+</script>
+
+</body>
+</html>
